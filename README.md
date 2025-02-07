@@ -175,11 +175,11 @@ Other useful documents and links are listed below.
 
 ### Install from Source
 
-For CUDA 12.1, you can install the dependencies with the following commands. Otherwise, please refer to [Installation Documentation](docs/installation.md) for more instructions on different cuda version, and additional dependency for data preprocessing, VAE, and model evaluation.
+For CUDA 12.4, you can install the dependencies with the following commands. Otherwise, please refer to [Installation Documentation](docs/installation.md) for more instructions on different cuda version, and additional dependency for data preprocessing, VAE, and model evaluation.
 
 ```bash
 # create a virtual env and activate (conda as an example)
-conda create -n opensora python=3.9
+conda create -n opensora python=3.10 -y
 conda activate opensora
 
 # download the repo
@@ -187,7 +187,7 @@ git clone https://github.com/hpcaitech/Open-Sora
 cd Open-Sora
 
 # install torch, torchvision and xformers
-pip install -r requirements/requirements-cu121.txt
+pip install -r requirements/requirements-cu124.txt
 
 # the default installation is for inference only
 pip install -v . # for development mode, `pip install -v -e .`
@@ -209,9 +209,14 @@ pip install flash-attn --no-build-isolation
 
 # install apex
 # set enable_layernorm_kernel=False in config to disable apex
-pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation --config-settings "--build-option=--cpp_ext" --config-settings "--build-option=--cuda_ext" git+https://github.com/NVIDIA/apex.git
-```
 
+```
+pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation \
+    --config-settings "--build-option=--cpp_ext" \
+    --config-settings "--build-option=--cuda_ext" \
+    git+https://github.com/NVIDIA/apex.git
+
+```
 ### Use Docker
 
 Run the following command to build a docker image from Dockerfile provided.
