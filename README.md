@@ -210,7 +210,6 @@ pip install flash-attn --no-build-isolation
 # install apex
 # set enable_layernorm_kernel=False in config to disable apex
 
-```
 pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation \
     --config-settings "--build-option=--cpp_ext" \
     --config-settings "--build-option=--cuda_ext" \
