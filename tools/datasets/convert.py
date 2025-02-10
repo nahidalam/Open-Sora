@@ -107,6 +107,7 @@ def process_general_images(root, output):
 
 def process_general_videos(root, output):
     root = os.path.expanduser(root)
+    print(f"root path is {root}")
     if not os.path.exists(root):
         return
     path_list = get_filelist(root, VID_EXTENSIONS)
@@ -115,9 +116,15 @@ def process_general_videos(root, output):
     relpath_list = [os.path.relpath(x, root) for x in path_list]
     df = pd.DataFrame(dict(path=path_list, id=fname_list, relpath=relpath_list))
 
-    os.makedirs(os.path.dirname(output), exist_ok=True)
-    df.to_csv(output, index=False)
-    print(f"Saved {len(df)} samples to {output}.")
+    #os.makedirs(os.path.dirname(output), exist_ok=True)
+    #df.to_csv(output, index=False)
+    # Save the file in the current directory
+    output_filename = os.path.basename(output)
+    output_path = os.path.join("./", output_filename)
+
+    df.to_csv(output_path, index=False)
+    print(f"Saved {len(df)} samples to {output_path}.")
+    #print(f"Saved {len(df)} samples to {output}.")
 
 
 if __name__ == "__main__":
