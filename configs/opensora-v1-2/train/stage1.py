@@ -48,7 +48,9 @@ grad_checkpoint = True
 
 # Acceleration settings
 num_workers = 8
+#num_workers = 1
 num_bucket_build_workers = 16
+#num_bucket_build_workers = 2
 dtype = "bf16"
 plugin = "zero2"
 
@@ -66,6 +68,7 @@ vae = dict(
     from_pretrained="hpcai-tech/OpenSora-VAE-v1.2",
     micro_frame_size=17,
     micro_batch_size=4,
+    #micro_batch_size=4,
 )
 text_encoder = dict(
     type="t5",
@@ -97,9 +100,11 @@ mask_ratios = {
 seed = 42
 outputs = "outputs"
 wandb = False
-epochs = 1000
+#epochs = 1000
+epochs = 100
 log_every = 10
-ckpt_every = 200
+#ckpt_every = 200
+ckpt_every = 20
 
 # optimization settings
 load = None
@@ -107,7 +112,8 @@ grad_clip = 1.0
 lr = 1e-4
 ema_decay = 0.99
 adam_eps = 1e-15
-warmup_steps = 1000
+#warmup_steps = 1000
+warmup_steps = 10
 
 cache_pin_memory = True
 pin_memory_cache_pre_alloc_numels = [(290 + 20) * 1024**2] * (2 * 8 + 4)
