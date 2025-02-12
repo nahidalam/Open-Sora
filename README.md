@@ -187,7 +187,7 @@ git clone https://github.com/hpcaitech/Open-Sora
 cd Open-Sora
 
 # install torch, torchvision and xformers
-pip install -r requirements/requirements-cu124.txt
+pip install -r requirements/requirements-cu121.txt
 
 # the default installation is for inference only
 pip install -v . # for development mode, `pip install -v -e .`
