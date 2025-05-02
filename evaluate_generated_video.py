@@ -1,7 +1,6 @@
 '''
 python video_eval.py --samples_dir /path/to/samples --outputs_dir /path/to/generated --output_csv results.csv
 '''
-
 import os
 import cv2
 import numpy as np
@@ -11,6 +10,7 @@ import requests
 import base64
 import csv
 import argparse
+import time
 from tqdm import tqdm
 from skimage.metrics import peak_signal_noise_ratio, structural_similarity
 from sentence_transformers import SentenceTransformer, util
@@ -28,25 +28,31 @@ lpips_model.eval()
 
 embed_model = SentenceTransformer('all-MiniLM-L6-v2')
 
-# Initialize Gemma 3 model from Huggingface
-print("Loading Gemma 3 model...")
+# Load Gemma 3 model with logging
+print("Loading Gemma 3 tokenizer...")
+start = time.time()
 tokenizer_gemma = AutoTokenizer.from_pretrained("google/gemma-3-27b-it")
+print(f"Tokenizer loaded in {time.time() - start:.2f}s")
+
+print("Loading Gemma 3 model...")
+start = time.time()
 model_gemma = AutoModelForCausalLM.from_pretrained("google/gemma-3-27b-it", device_map="auto")
+print(f"Model loaded in {time.time() - start:.2f}s")
+
+print("Creating Gemma text generation pipeline...")
 gemma_pipeline = pipeline("text-generation", model=model_gemma, tokenizer=tokenizer_gemma)
+print("Gemma pipeline initialized.")
 
 # --- LOW-LEVEL METRICS ---
 def compute_video_metrics(src_path, gen_path):
     cap_src = cv2.VideoCapture(src_path)
     cap_gen = cv2.VideoCapture(gen_path)
 
-    psnr_scores = []
-    ssim_scores = []
-    lpips_scores = []
+    psnr_scores, ssim_scores, lpips_scores = [], [], []
 
     while True:
         ret_src, frame_src = cap_src.read()
         ret_gen, frame_gen = cap_gen.read()
-
         if not ret_src or not ret_gen:
             break
 
@@ -79,7 +85,7 @@ def compute_video_metrics(src_path, gen_path):
         "lpips": np.mean(lpips_scores) if lpips_scores else 1.0
     }
 
-# --- VLM INTERFACE (GEMINI) ---
+# --- GEMINI API ---
 def describe_frame_with_vlm(frame):
     _, img_encoded = cv2.imencode('.jpg', frame)
     b64_img = base64.b64encode(img_encoded).decode('utf-8')
@@ -101,15 +107,17 @@ def describe_frame_with_vlm(frame):
         "Content-Type": "application/json"
     }
 
-    response = requests.post(
-        "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro-vision:generateContent",
-        headers=headers,
-        json=payload
-    )
-
     try:
+        response = requests.post(
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro-vision:generateContent",
+            headers=headers,
+            json=payload,
+            timeout=10
+        )
+        response.raise_for_status()
         return response.json()['candidates'][0]['content']['parts'][0]['text']
-    except:
+    except Exception as e:
+        print(f"[Gemini Error] {e}")
         return "Error or empty response"
 
 def compare_descriptions(desc1, desc2):
@@ -148,14 +156,14 @@ def evaluate_semantics_with_vlm_multi(src_path, gen_path):
         "gen_desc": " | ".join(gen_descs)
     }
 
-# --- GEMMA 3 DESCRIPTION FUNCTION ---
-def summarize_video_with_gemma(video_path):
+# --- GEMMA TEXT SUMMARY ---
+def summarize_video_with_gemma(video_path, verbose=False):
     cap = cv2.VideoCapture(video_path)
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     indices = [0, total_frames // 2, total_frames - 1]
-
     descriptions = []
-    for idx in indices:
+
+    for idx in tqdm(indices, desc=f"[Gemma] {os.path.basename(video_path)}"):
         cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
         ret, frame = cap.read()
         if not ret:
@@ -166,16 +174,23 @@ def summarize_video_with_gemma(video_path):
         img_bytes = base64.b64encode(img_encoded).decode("utf-8")
 
         prompt = f"This is a frame from a video. Describe what is happening in the scene:\n[image base64: {img_bytes}]"
-        response = gemma_pipeline(prompt, max_new_tokens=100, do_sample=False)[0]['generated_text']
-        descriptions.append(response.strip())
+
+        try:
+            if verbose:
+                print(f"[Gemma] Prompting frame {idx}")
+            response = gemma_pipeline(prompt, max_new_tokens=100, do_sample=False)[0]['generated_text']
+            descriptions.append(response.strip())
+        except Exception as e:
+            print(f"[Gemma Error] {e}")
+            descriptions.append("Generation error")
 
     cap.release()
     return " | ".join(descriptions)
 
-# --- FULL EVAL ---
-def evaluate_all(samples_dir, outputs_dir):
+# --- FULL EVALUATION ---
+def evaluate_all(samples_dir, outputs_dir, verbose=False):
     all_results = {}
-    for filename in tqdm(os.listdir(samples_dir)):
+    for filename in tqdm(os.listdir(samples_dir), desc="Evaluating videos"):
         if not filename.endswith(".mp4"):
             continue
 
@@ -183,13 +198,16 @@ def evaluate_all(samples_dir, outputs_dir):
         gen_path = os.path.join(outputs_dir, filename)
 
         if not os.path.exists(gen_path):
-            print(f"Missing: {filename}")
+            print(f"[Warning] Missing generated file: {filename}")
             continue
+
+        if verbose:
+            print(f"Processing {filename}...")
 
         low_level = compute_video_metrics(src_path, gen_path)
         high_level = evaluate_semantics_with_vlm_multi(src_path, gen_path)
-        gemma_src = summarize_video_with_gemma(src_path)
-        gemma_gen = summarize_video_with_gemma(gen_path)
+        gemma_src = summarize_video_with_gemma(src_path, verbose=verbose)
+        gemma_gen = summarize_video_with_gemma(gen_path, verbose=verbose)
         gemma_score = compare_descriptions(gemma_src, gemma_gen)
 
         all_results[filename] = {
@@ -218,17 +236,19 @@ def export_results_to_csv(results, output_path="video_eval_report.csv"):
             row.update(metrics)
             writer.writerow(row)
 
-# --- MAIN ENTRY ---
+# --- MAIN ---
 def main():
     parser = argparse.ArgumentParser(description="Video Evaluation Script")
-    parser.add_argument("--samples_dir", required=True, help="Directory containing original sample videos")
-    parser.add_argument("--outputs_dir", required=True, help="Directory containing generated videos to evaluate")
-    parser.add_argument("--output_csv", default="video_eval_report.csv", help="Path to save the evaluation CSV")
+    parser.add_argument("--samples_dir", required=True, help="Directory with original videos")
+    parser.add_argument("--outputs_dir", required=True, help="Directory with generated videos")
+    parser.add_argument("--output_csv", default="video_eval_report.csv", help="CSV file to save results")
+    parser.add_argument("--verbose", action="store_true", help="Enable verbose logging")
     args = parser.parse_args()
 
-    results = evaluate_all(args.samples_dir, args.outputs_dir)
+    print(f"Evaluating from {args.samples_dir} to {args.outputs_dir}")
+    results = evaluate_all(args.samples_dir, args.outputs_dir, verbose=args.verbose)
     export_results_to_csv(results, args.output_csv)
-    print(f"Results saved to {args.output_csv}")
+    print(f"✅ Evaluation complete. Results saved to {args.output_csv}")
 
 if __name__ == "__main__":
     main()
