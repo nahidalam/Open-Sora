@@ -1,3 +1,7 @@
+'''
+python video_eval.py --samples_dir /path/to/samples --outputs_dir /path/to/generated --output_csv results.csv
+'''
+
 import os
 import cv2
 import numpy as np
@@ -6,6 +10,7 @@ import lpips
 import requests
 import base64
 import csv
+import argparse
 from tqdm import tqdm
 from skimage.metrics import peak_signal_noise_ratio, structural_similarity
 from sentence_transformers import SentenceTransformer, util
@@ -213,6 +218,17 @@ def export_results_to_csv(results, output_path="video_eval_report.csv"):
             row.update(metrics)
             writer.writerow(row)
 
-# Example usage:
-# results = evaluate_all("/path/to/samples", "/path/to/outputs")
-# export_results_to_csv(results)
+# --- MAIN ENTRY ---
+def main():
+    parser = argparse.ArgumentParser(description="Video Evaluation Script")
+    parser.add_argument("--samples_dir", required=True, help="Directory containing original sample videos")
+    parser.add_argument("--outputs_dir", required=True, help="Directory containing generated videos to evaluate")
+    parser.add_argument("--output_csv", default="video_eval_report.csv", help="Path to save the evaluation CSV")
+    args = parser.parse_args()
+
+    results = evaluate_all(args.samples_dir, args.outputs_dir)
+    export_results_to_csv(results, args.output_csv)
+    print(f"Results saved to {args.output_csv}")
+
+if __name__ == "__main__":
+    main()
